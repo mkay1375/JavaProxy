@@ -63,6 +63,7 @@ public class ProxyServer implements ApplicationRunner {
             this.executorService.shutdown();
             this.requestHandlers.shutdown();
             this.requestCopyClientToProxyHandlers.shutdown();
+            IOUtils.tryToClose(this.serverSocket);
         }
         log.info("Proxy server stopped");
     }

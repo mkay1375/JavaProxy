@@ -4,7 +4,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.*;
+import java.io.BufferedInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
@@ -184,21 +187,11 @@ public class ProxyRequestHandler implements Runnable {
     }
 
     private void cleanUp() {
-        this.tryToClose(this.proxyInput);
-        this.tryToClose(this.proxyOutput);
-        this.tryToClose(this.proxySocket);
-
-        this.tryToClose(this.clientInput);
-        this.tryToClose(this.clientOutput);
-        this.tryToClose(this.clientSocket);
-    }
-
-    private void tryToClose(Closeable closeable) {
-        if (closeable == null) return;
-        try {
-            closeable.close();
-        } catch (Exception e) {
-            log.debug("Closing {} failed", closeable.getClass().getName(), e);
-        }
+        IOUtils.tryToClose(this.proxyInput);
+        IOUtils.tryToClose(this.proxyOutput);
+        IOUtils.tryToClose(this.proxySocket);
+        IOUtils.tryToClose(this.clientInput);
+        IOUtils.tryToClose(this.clientOutput);
+        IOUtils.tryToClose(this.clientSocket);
     }
 }
