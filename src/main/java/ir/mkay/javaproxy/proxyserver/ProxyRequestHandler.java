@@ -31,6 +31,8 @@ public class ProxyRequestHandler implements Runnable {
 
     private final long startTime = currentTimeMillis();
     private final ExecutorService copyClientToProxyHandlers;
+    private final CodingMode codingMode;
+    private final byte codingConstant;
 
     private final int clientTimeout;
     private final HttpRequestInfo clientRequestInfo = new HttpRequestInfo();
@@ -44,11 +46,18 @@ public class ProxyRequestHandler implements Runnable {
     private BufferedInputStream proxyInput;
     private OutputStream proxyOutput;
 
-    public ProxyRequestHandler(Socket socket, int clientTimeout, int proxyTimeout, ExecutorService copyClientToProxyHandlers) {
+    public ProxyRequestHandler(Socket socket,
+                               int clientTimeout,
+                               int proxyTimeout,
+                               ExecutorService copyClientToProxyHandlers,
+                               CodingMode codingMode,
+                               byte codingConstant) {
         this.clientSocket = socket;
         this.clientTimeout = clientTimeout;
         this.proxyTimeout = proxyTimeout;
         this.copyClientToProxyHandlers = copyClientToProxyHandlers;
+        this.codingMode = codingMode;
+        this.codingConstant = codingConstant;
     }
 
     @Override
@@ -156,6 +165,7 @@ public class ProxyRequestHandler implements Runnable {
         StringBuilder header = new StringBuilder();
         input.mark(MAX_HTTP_HEADER_SIZE);
         while ((read = input.read(buffer)) > -1) {
+            this.applyCoding(buffer, read);
             header.append(new String(buffer, 0, read));
             endOfHttpHeaderIndex = header.indexOf(END_OF_HTTP_HEADER, Math.max(total - 2, 0));
             total += read;
@@ -179,9 +189,28 @@ public class ProxyRequestHandler implements Runnable {
         var buffer = new byte[BUFFER_SIZE];
         int read;
         while ((read = in.read(buffer)) > -1) {
+            this.applyCoding(buffer, read);
             out.write(buffer, 0, read);
             if (in.available() <= 0) {
                 out.flush();
+            }
+        }
+    }
+
+    private void applyCoding(byte[] bytes, int length) {
+        if (this.codingConstant == 0) return;
+
+        length = Math.min(bytes.length, length);
+        switch (this.codingMode) {
+            case ENCODE -> {
+                for (int i = 0; i < length; i++) {
+                    bytes[i] += this.codingConstant;
+                }
+            }
+            case DECODE -> {
+                for (int i = 0; i < length; i++) {
+                    bytes[i] -= this.codingConstant;
+                }
             }
         }
     }

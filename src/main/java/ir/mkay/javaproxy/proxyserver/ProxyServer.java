@@ -22,19 +22,25 @@ public class ProxyServer implements ApplicationRunner {
     private final ServerSocket serverSocket;
     private final int clientTimeout;
     private final int proxyTimeout;
+    private final CodingMode codingMode;
+    private final byte codingConstant;
     private boolean started = false;
 
 
     public ProxyServer(@Value("${server.port}") int port,
                        @Value("${server.threads}") int threads,
                        @Value("${server.client-timeout}") int clientTimeout,
-                       @Value("${server.proxy-timeout}") int proxyTimeout) throws IOException {
+                       @Value("${server.proxy-timeout}") int proxyTimeout,
+                       @Value("${server.coding-mode}") CodingMode codingMode,
+                       @Value("${server.coding-constant}") byte codingConstant) throws IOException {
         this.executorService = Executors.newSingleThreadExecutor();
         this.requestHandlers = Executors.newFixedThreadPool(threads);
         this.requestCopyClientToProxyHandlers = Executors.newFixedThreadPool(threads);
         this.serverSocket = new ServerSocket(port);
         this.clientTimeout = clientTimeout;
         this.proxyTimeout = proxyTimeout;
+        this.codingMode = codingMode;
+        this.codingConstant = codingConstant;
     }
 
     public void start() {
@@ -71,7 +77,13 @@ public class ProxyServer implements ApplicationRunner {
     private void accept() {
         try {
             var socket = this.serverSocket.accept();
-            this.requestHandlers.submit(new ProxyRequestHandler(socket, this.clientTimeout, this.proxyTimeout, this.requestCopyClientToProxyHandlers));
+            var handler = new ProxyRequestHandler(socket,
+                    this.clientTimeout,
+                    this.proxyTimeout,
+                    this.requestCopyClientToProxyHandlers,
+                    this.codingMode,
+                    this.codingConstant);
+            this.requestHandlers.submit(handler);
         } catch (IOException e) {
             log.warn("Error accepting socket", e);
         }
