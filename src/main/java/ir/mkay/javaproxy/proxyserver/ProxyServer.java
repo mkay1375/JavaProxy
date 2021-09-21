@@ -24,6 +24,9 @@ public class ProxyServer implements ApplicationRunner {
     private final int proxyTimeout;
     private final CodingMode codingMode;
     private final byte codingConstant;
+    private final String staticProxyServerAddress;
+    private final int staticProxyServerPort;
+
     private boolean started = false;
 
 
@@ -32,7 +35,9 @@ public class ProxyServer implements ApplicationRunner {
                        @Value("${server.client-timeout}") int clientTimeout,
                        @Value("${server.proxy-timeout}") int proxyTimeout,
                        @Value("${server.coding-mode}") CodingMode codingMode,
-                       @Value("${server.coding-constant}") byte codingConstant) throws IOException {
+                       @Value("${server.coding-constant}") byte codingConstant,
+                       @Value("${server.static-proxy-server.address}") String staticProxyServerAddress,
+                       @Value("${server.static-proxy-server.port}") int staticProxyServerPort) throws IOException {
         this.executorService = Executors.newSingleThreadExecutor();
         this.requestHandlers = Executors.newFixedThreadPool(threads);
         this.requestCopyClientToProxyHandlers = Executors.newFixedThreadPool(threads);
@@ -41,14 +46,16 @@ public class ProxyServer implements ApplicationRunner {
         this.proxyTimeout = proxyTimeout;
         this.codingMode = codingMode;
         this.codingConstant = codingConstant;
+        this.staticProxyServerAddress = staticProxyServerAddress;
+        this.staticProxyServerPort = staticProxyServerPort;
     }
 
     public void start() {
         if (!this.started) {
             this.executorService.submit(() -> {
-               while (!Thread.interrupted()) {
-                   this.accept();
-               }
+                while (!Thread.interrupted()) {
+                    this.accept();
+                }
             });
 
             this.started = true;
@@ -82,7 +89,9 @@ public class ProxyServer implements ApplicationRunner {
                     this.proxyTimeout,
                     this.requestCopyClientToProxyHandlers,
                     this.codingMode,
-                    this.codingConstant);
+                    this.codingConstant,
+                    this.staticProxyServerAddress,
+                    this.staticProxyServerPort);
             this.requestHandlers.submit(handler);
         } catch (IOException e) {
             log.warn("Error accepting socket", e);
