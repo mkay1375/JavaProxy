@@ -25,13 +25,12 @@ public class ProxyRequestHandler implements Runnable {
 
     private static final Logger exchangeHeaderLog = LoggerFactory.getLogger(ProxyRequestHandler.class.getName() + "-EXCHANGE_HEADER");
 
-    private static final byte[] CONNECTION_ESTABLISHED_RESPONSE = CONNECTION_ESTABLISHED.toHttpHeader().getBytes(StandardCharsets.ISO_8859_1);
     private static final int BUFFER_SIZE = 4 * 1024;
     private static final int MAX_HTTP_HEADER_SIZE = 16 * 1024;
 
     private final long startTime = currentTimeMillis();
     private final ExecutorService copyClientToProxyHandlers;
-    private final CodingMode codingMode;
+    private final ProxyServerRole proxyServerRole;
     private final byte codingConstant;
     private final String staticProxyServerAddress;
     private final int staticProxyServerPort;
@@ -52,7 +51,7 @@ public class ProxyRequestHandler implements Runnable {
                                int clientTimeout,
                                int proxyTimeout,
                                ExecutorService copyClientToProxyHandlers,
-                               CodingMode codingMode,
+                               ProxyServerRole proxyServerRole,
                                byte codingConstant,
                                String staticProxyServerAddress,
                                int staticProxyServerPort) {
@@ -60,7 +59,7 @@ public class ProxyRequestHandler implements Runnable {
         this.clientTimeout = clientTimeout;
         this.proxyTimeout = proxyTimeout;
         this.copyClientToProxyHandlers = copyClientToProxyHandlers;
-        this.codingMode = codingMode;
+        this.proxyServerRole = proxyServerRole;
         this.codingConstant = codingConstant;
         this.staticProxyServerAddress = staticProxyServerAddress;
         this.staticProxyServerPort = staticProxyServerPort;
@@ -101,7 +100,8 @@ public class ProxyRequestHandler implements Runnable {
     }
 
     private void readClientRequestInfo() throws IOException {
-        var headerLines = this.readHttpHeader(this.clientInput).split(CRLF);
+        var codingAction = this.proxyServerRole == ProxyServerRole.CLIENT ? CodingAction.NOTHING : CodingAction.DECODE;
+        var headerLines = this.readHttpHeader(this.clientInput, codingAction).split(CRLF);
         for (int i = 0; i < headerLines.length; i++) {
             var line = headerLines[i];
             if (line == null || line.isBlank()) break;
@@ -127,11 +127,13 @@ public class ProxyRequestHandler implements Runnable {
     }
 
     private void handleHttps() throws IOException {
-        if (this.clientRequestInfo.getMethod().equals("CONNECT")) {
+        if (this.proxyServerRole == ProxyServerRole.SERVER && this.clientRequestInfo.getMethod().equals("CONNECT")) {
             this.clientRequestInfo.setHttps(true);
             this.purge(this.clientInput);
-            clientOutput.write(CONNECTION_ESTABLISHED_RESPONSE);
-            clientOutput.flush();
+            var connectionEstablishedResponse = CONNECTION_ESTABLISHED.toHttpHeader().getBytes(StandardCharsets.ISO_8859_1);
+            this.code(CodingAction.ENCODE, connectionEstablishedResponse, connectionEstablishedResponse.length);
+            this.clientOutput.write(connectionEstablishedResponse);
+            this.clientOutput.flush();
         }
     }
 
@@ -146,13 +148,14 @@ public class ProxyRequestHandler implements Runnable {
     }
 
     private void copyClientToProxy() throws IOException {
-        this.copy(this.clientInput, this.proxyOutput, this.codingMode == CodingMode.ENCODE);
+        this.copy(this.clientInput, this.proxyOutput,
+                this.proxyServerRole == ProxyServerRole.CLIENT ? CodingAction.ENCODE : CodingAction.DECODE);
     }
 
     private void readProxyResponseInfo() throws IOException {
-        if (this.clientRequestInfo.isHttps()) return;
+        if (this.proxyServerRole == ProxyServerRole.CLIENT || this.clientRequestInfo.isHttps()) return;
 
-        var headerLines = this.readHttpHeader(this.proxyInput).split(CRLF);
+        var headerLines = this.readHttpHeader(this.proxyInput, CodingAction.NOTHING).split(CRLF);
         for (int i = 0; i < headerLines.length; i++) {
             var line = headerLines[i];
             if (line == null || line.isBlank()) break;
@@ -165,16 +168,18 @@ public class ProxyRequestHandler implements Runnable {
     }
 
     private void copyProxyToClient() throws IOException {
-        this.copy(this.proxyInput, this.clientOutput, this.codingMode == CodingMode.DECODE);
+        this.copy(this.proxyInput, this.clientOutput,
+                this.proxyServerRole == ProxyServerRole.CLIENT ? CodingAction.DECODE : CodingAction.ENCODE);
     }
 
-    private String readHttpHeader(BufferedInputStream input) throws IOException {
+    private String readHttpHeader(BufferedInputStream input, CodingAction codingAction) throws IOException {
         var buffer = new byte[1024];
         int read, total = 0;
         int endOfHttpHeaderIndex = -1;
         StringBuilder header = new StringBuilder();
         input.mark(MAX_HTTP_HEADER_SIZE);
         while ((read = input.read(buffer)) > -1) {
+            this.code(codingAction, buffer, read);
             header.append(new String(buffer, 0, read));
             endOfHttpHeaderIndex = header.indexOf(END_OF_HTTP_HEADER, Math.max(total - 2, 0));
             total += read;
@@ -194,11 +199,11 @@ public class ProxyRequestHandler implements Runnable {
         inputStream.readNBytes(inputStream.available());
     }
 
-    private void copy(InputStream in, OutputStream out, boolean applyCoding) throws IOException {
+    private void copy(InputStream in, OutputStream out, CodingAction codingAction) throws IOException {
         var buffer = new byte[BUFFER_SIZE];
         int read;
         while ((read = in.read(buffer)) > -1) {
-            if (applyCoding) this.applyCoding(buffer, read);
+            this.code(codingAction, buffer, read);
             out.write(buffer, 0, read);
             if (in.available() <= 0) {
                 out.flush();
@@ -206,21 +211,20 @@ public class ProxyRequestHandler implements Runnable {
         }
     }
 
-    private void applyCoding(byte[] bytes, int length) {
-        if (this.codingConstant == 0) return;
+    private void code(CodingAction codingAction, byte[] bytes, int length) {
+        byte codingConstant;
+        switch (codingAction) {
+            case NOTHING -> {
+                return;
+            }
+            case ENCODE -> codingConstant = this.codingConstant;
+            case DECODE -> codingConstant = (byte) (-1 * this.codingConstant);
+            default -> throw new IllegalStateException("Unexpected value: " + codingAction);
+        }
 
         length = Math.min(bytes.length, length);
-        switch (this.codingMode) {
-            case ENCODE -> {
-                for (int i = 0; i < length; i++) {
-                    bytes[i] += this.codingConstant;
-                }
-            }
-            case DECODE -> {
-                for (int i = 0; i < length; i++) {
-                    bytes[i] -= this.codingConstant;
-                }
-            }
+        for (int i = 0; i < length; i++) {
+            bytes[i] += codingConstant;
         }
     }
 

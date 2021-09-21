@@ -22,7 +22,7 @@ public class ProxyServer implements ApplicationRunner {
     private final ServerSocket serverSocket;
     private final int clientTimeout;
     private final int proxyTimeout;
-    private final CodingMode codingMode;
+    private final ProxyServerRole proxyServerRole;
     private final byte codingConstant;
     private final String staticProxyServerAddress;
     private final int staticProxyServerPort;
@@ -34,7 +34,7 @@ public class ProxyServer implements ApplicationRunner {
                        @Value("${server.threads}") int threads,
                        @Value("${server.client-timeout}") int clientTimeout,
                        @Value("${server.proxy-timeout}") int proxyTimeout,
-                       @Value("${server.coding-mode}") CodingMode codingMode,
+                       @Value("${server.role}") ProxyServerRole proxyServerRole,
                        @Value("${server.coding-constant}") byte codingConstant,
                        @Value("${server.static-proxy-server.address}") String staticProxyServerAddress,
                        @Value("${server.static-proxy-server.port}") int staticProxyServerPort) throws IOException {
@@ -44,7 +44,7 @@ public class ProxyServer implements ApplicationRunner {
         this.serverSocket = new ServerSocket(port);
         this.clientTimeout = clientTimeout;
         this.proxyTimeout = proxyTimeout;
-        this.codingMode = codingMode;
+        this.proxyServerRole = proxyServerRole;
         this.codingConstant = codingConstant;
         this.staticProxyServerAddress = staticProxyServerAddress;
         this.staticProxyServerPort = staticProxyServerPort;
@@ -88,7 +88,7 @@ public class ProxyServer implements ApplicationRunner {
                     this.clientTimeout,
                     this.proxyTimeout,
                     this.requestCopyClientToProxyHandlers,
-                    this.codingMode,
+                    this.proxyServerRole,
                     this.codingConstant,
                     this.staticProxyServerAddress,
                     this.staticProxyServerPort);
