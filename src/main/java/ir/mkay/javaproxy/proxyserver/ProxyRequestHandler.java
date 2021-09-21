@@ -100,8 +100,9 @@ public class ProxyRequestHandler implements Runnable {
     }
 
     private void readClientRequestInfo() throws IOException {
-        var codingAction = this.proxyServerRole == ProxyServerRole.CLIENT ? CodingAction.NOTHING : CodingAction.DECODE;
-        var headerLines = this.readHttpHeader(this.clientInput, codingAction).split(CRLF);
+        if (this.proxyServerRole == ProxyServerRole.CLIENT) return;
+
+        var headerLines = this.readHttpHeader(this.clientInput, CodingAction.DECODE).split(CRLF);
         for (int i = 0; i < headerLines.length; i++) {
             var line = headerLines[i];
             if (line == null || line.isBlank()) break;
@@ -115,7 +116,7 @@ public class ProxyRequestHandler implements Runnable {
 
     private void connectToProxy() throws IOException {
         var proxyAddressString = this.staticProxyServerAddress;
-        if (proxyAddressString == null) proxyAddressString = this.clientRequestInfo.getTargetAsUrl().getHost();
+        if (isBlank(proxyAddressString)) proxyAddressString = this.clientRequestInfo.getTargetAsUrl().getHost();
         var proxyAddress = InetAddress.getByName(proxyAddressString);
         var proxyPort = this.staticProxyServerPort;
         if (proxyPort < 0) proxyPort = this.clientRequestInfo.getTargetAsUrl().getPort();
@@ -226,6 +227,10 @@ public class ProxyRequestHandler implements Runnable {
         for (int i = 0; i < length; i++) {
             bytes[i] += codingConstant;
         }
+    }
+
+    private boolean isBlank(String string) {
+        return string == null || string.isBlank();
     }
 
     private void cleanUp() {
