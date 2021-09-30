@@ -2,11 +2,11 @@ package ir.mkay.javaproxy.proxyserver;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.ApplicationArguments;
-import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Service;
 
+import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
+import java.io.Closeable;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.util.concurrent.ExecutorService;
@@ -14,7 +14,7 @@ import java.util.concurrent.Executors;
 
 @Service
 @Slf4j
-public class ProxyServer implements ApplicationRunner {
+public class ProxyServer implements Closeable {
 
     private final ExecutorService executorService;
     private final ExecutorService requestHandlers;
@@ -37,6 +37,7 @@ public class ProxyServer implements ApplicationRunner {
         this.proxyTimeout = proxyTimeout;
     }
 
+    @PostConstruct
     public void start() {
         if (!this.started) {
             this.executorService.submit(() -> {
@@ -52,13 +53,8 @@ public class ProxyServer implements ApplicationRunner {
         }
     }
 
-    @Override
-    public void run(ApplicationArguments args) {
-        this.start();
-    }
-
     @PreDestroy
-    public void stop() {
+    public void close() {
         if (this.started) {
             this.executorService.shutdown();
             this.requestHandlers.shutdown();

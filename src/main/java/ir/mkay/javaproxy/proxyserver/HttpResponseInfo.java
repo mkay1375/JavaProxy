@@ -14,22 +14,22 @@ public class HttpResponseInfo extends HttpExchangeInfo {
         CONNECTION_ESTABLISHED.setStatus(200);
         CONNECTION_ESTABLISHED.setProtocolVersion("HTTP/1.0");
         CONNECTION_ESTABLISHED.setReasonPhrase("Connection established");
-        CONNECTION_ESTABLISHED.addHeader("proxy-agent", "javaproxy");
+        CONNECTION_ESTABLISHED.addHeader("proxy-agent", "JavaProxy");
     }
 
     private String protocolVersion;
     private int status;
     private String reasonPhrase;
 
-    public void parseResponseFirstLine(String responseLine) {
-        var parts = responseLine.split("\\s+", 3);
+    public void parseHttpExchangeFirstLine(String line) {
+        var parts = line.split("\\s+", 3);
         this.protocolVersion = parts[0];
         this.status = Integer.parseInt(parts[1]);
         this.reasonPhrase = parts[2];
     }
 
     @Override
-    public String getHttpHeaderFirstLine() {
+    public String getHttpExchangeFirstLine() {
         return this.protocolVersion + " " + this.status + " " + this.reasonPhrase;
     }
 

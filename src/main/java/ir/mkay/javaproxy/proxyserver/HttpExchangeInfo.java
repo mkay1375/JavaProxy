@@ -42,9 +42,9 @@ public abstract class HttpExchangeInfo {
         });
     }
 
-    public String toHttpHeader() {
+    public String toHttpString() {
         StringBuilder result = new StringBuilder();
-        result.append(this.getHttpHeaderFirstLine());
+        result.append(this.getHttpExchangeFirstLine());
         result.append(CRLF);
         this.forEachHeader((name, value) -> {
             result.append(name);
@@ -56,5 +56,7 @@ public abstract class HttpExchangeInfo {
         return result.toString();
     }
 
-    public abstract String getHttpHeaderFirstLine();
+    public abstract void parseHttpExchangeFirstLine(String line);
+
+    public abstract String getHttpExchangeFirstLine();
 }

@@ -16,8 +16,8 @@ public class HttpRequestInfo extends HttpExchangeInfo {
     private URL targetAsUrl;
     private boolean https;
 
-    public void parseRequestFirstLine(String requestLine) {
-        var parts = requestLine.split("\\s+");
+    public void parseHttpExchangeFirstLine(String line) {
+        var parts = line.split("\\s+");
         this.method = parts[0];
         this.target = parts[1];
         this.protocolVersion = parts[2];
@@ -32,7 +32,7 @@ public class HttpRequestInfo extends HttpExchangeInfo {
     }
 
     @Override
-    public String getHttpHeaderFirstLine() {
+    public String getHttpExchangeFirstLine() {
         return  this.method + " " + this.target + " " + this.protocolVersion;
     }
 

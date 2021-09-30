@@ -23,11 +23,11 @@ import static java.lang.System.currentTimeMillis;
 @Slf4j
 public class ProxyRequestHandler implements Runnable {
 
-    private static final Logger exchangeHeaderLog = LoggerFactory.getLogger(ProxyRequestHandler.class.getName() + "-EXCHANGE_HEADER");
+    private static final Logger exchangeInfoLog = LoggerFactory.getLogger(ProxyRequestHandler.class.getName() + "-EXCHANGE_INFO");
 
-    private static final byte[] CONNECTION_ESTABLISHED_RESPONSE = CONNECTION_ESTABLISHED.toHttpHeader().getBytes(StandardCharsets.ISO_8859_1);
+    private static final byte[] CONNECTION_ESTABLISHED_RESPONSE = CONNECTION_ESTABLISHED.toHttpString().getBytes(StandardCharsets.ISO_8859_1);
     private static final int BUFFER_SIZE = 4 * 1024;
-    private static final int MAX_HTTP_HEADER_SIZE = 16 * 1024;
+    private static final int MAX_HTTP_STRING_SIZE = 16 * 1024;
 
     private final long startTime = currentTimeMillis();
     private final ExecutorService copyClientToProxyHandlers;
@@ -62,7 +62,7 @@ public class ProxyRequestHandler implements Runnable {
             this.readClientRequestInfo();
             this.connectToProxy();
             this.handleHttps();
-            this.copyClientToProxyInAnotherThread();
+            this.copyClientToProxyAsync();
             this.readProxyResponseInfo();
             this.copyProxyToClient();
         } catch (UnknownHostException e) {
@@ -74,7 +74,7 @@ public class ProxyRequestHandler implements Runnable {
         } finally {
             this.cleanUp();
             if (log.isDebugEnabled()) {
-                log.debug("{}ms - Cleaned Up", currentTimeMillis() - startTime);
+                log.debug("{}ms - Cleaned Up", this.getElapsedTime());
             }
         }
     }
@@ -86,15 +86,10 @@ public class ProxyRequestHandler implements Runnable {
     }
 
     private void readClientRequestInfo() throws IOException {
-        var headerLines = this.readHttpHeader(this.clientInput).split(CRLF);
-        for (int i = 0; i < headerLines.length; i++) {
-            var line = headerLines[i];
-            if (line == null || line.isBlank()) break;
-            if (i == 0) this.clientRequestInfo.parseRequestFirstLine(line);
-            else this.clientRequestInfo.parseHeader(line);
-        }
-        if (exchangeHeaderLog.isDebugEnabled()) {
-            exchangeHeaderLog.debug("{}ms - Client {}", currentTimeMillis() - startTime, this.clientRequestInfo);
+        this.readExchangeInfo(this.clientInput, this.clientRequestInfo);
+
+        if (exchangeInfoLog.isDebugEnabled()) {
+            exchangeInfoLog.debug("{}ms - Client {}", this.getElapsedTime(), this.clientRequestInfo);
         }
     }
 
@@ -116,7 +111,7 @@ public class ProxyRequestHandler implements Runnable {
         }
     }
 
-    private void copyClientToProxyInAnotherThread() {
+    private void copyClientToProxyAsync() {
         this.copyClientToProxyHandlers.submit(() -> {
             try {
                 this.copyClientToProxy();
@@ -133,15 +128,10 @@ public class ProxyRequestHandler implements Runnable {
     private void readProxyResponseInfo() throws IOException {
         if (this.clientRequestInfo.isHttps()) return;
 
-        var headerLines = this.readHttpHeader(this.proxyInput).split(CRLF);
-        for (int i = 0; i < headerLines.length; i++) {
-            var line = headerLines[i];
-            if (line == null || line.isBlank()) break;
-            if (i == 0) this.proxyResponseInfo.parseResponseFirstLine(line);
-            else this.proxyResponseInfo.parseHeader(line);
-        }
-        if (exchangeHeaderLog.isDebugEnabled()) {
-            exchangeHeaderLog.debug("{}ms - Proxy {}", currentTimeMillis() - startTime, this.proxyResponseInfo);
+        this.readExchangeInfo(this.proxyInput, this.proxyResponseInfo);
+
+        if (exchangeInfoLog.isDebugEnabled()) {
+            exchangeInfoLog.debug("{}ms - Proxy {}", this.getElapsedTime(), this.proxyResponseInfo);
         }
     }
 
@@ -149,12 +139,22 @@ public class ProxyRequestHandler implements Runnable {
         this.copy(this.proxyInput, this.clientOutput);
     }
 
-    private String readHttpHeader(BufferedInputStream input) throws IOException {
+    private void readExchangeInfo(BufferedInputStream inputStream, HttpExchangeInfo httpExchangeInfo) throws IOException {
+        var headerLines = this.readHttpString(inputStream).split(CRLF);
+        for (int i = 0; i < headerLines.length; i++) {
+            var line = headerLines[i];
+            if (line == null || line.isBlank()) break;
+            if (i == 0) httpExchangeInfo.parseHttpExchangeFirstLine(line);
+            else httpExchangeInfo.parseHeader(line);
+        }
+    }
+
+    private String readHttpString(BufferedInputStream input) throws IOException {
         var buffer = new byte[1024];
         int read, total = 0;
         int endOfHttpHeaderIndex = -1;
         StringBuilder header = new StringBuilder();
-        input.mark(MAX_HTTP_HEADER_SIZE);
+        input.mark(MAX_HTTP_STRING_SIZE);
         while ((read = input.read(buffer)) > -1) {
             header.append(new String(buffer, 0, read));
             endOfHttpHeaderIndex = header.indexOf(END_OF_HTTP_HEADER, Math.max(total - 2, 0));
@@ -162,8 +162,8 @@ public class ProxyRequestHandler implements Runnable {
             if (endOfHttpHeaderIndex > 0) {
                 break;
             }
-            if (total > MAX_HTTP_HEADER_SIZE) {
-                throw new IllegalStateException("HTTP header size exceeded");
+            if (total > MAX_HTTP_STRING_SIZE) {
+                throw new IllegalStateException("HTTP string size exceeded");
             }
         }
         input.reset();
@@ -184,6 +184,10 @@ public class ProxyRequestHandler implements Runnable {
                 out.flush();
             }
         }
+    }
+
+    private long getElapsedTime() {
+        return currentTimeMillis() - this.startTime;
     }
 
     private void cleanUp() {
